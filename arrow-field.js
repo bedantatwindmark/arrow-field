@@ -108,19 +108,26 @@
       this._ro.observe(canvas);
       this._onResize();
 
-      // Only animate while the canvas is actually visible on screen.
+      // Two independent pause reasons — scrolled off screen, and tab
+      // hidden — each tracked separately so one can't clobber the other.
+      // Only run when BOTH say "yes, animate."
+      this._isIntersecting = false;
+      this._updateRunState = this._updateRunState.bind(this);
+
       this._io = new IntersectionObserver((entries) => {
-        const visible = entries[0].isIntersecting;
-        if (visible) this.start(); else this.stop();
+        this._isIntersecting = entries[0].isIntersecting;
+        this._updateRunState();
       }, { threshold: 0.01 });
       this._io.observe(canvas);
 
       if (opts.ripple) clickTargets.add(this);
 
-      document.addEventListener('visibilitychange', () => {
-        if (document.hidden) this.stop();
-        else if (this._visible) this.start();
-      });
+      document.addEventListener('visibilitychange', this._updateRunState);
+    }
+
+    _updateRunState() {
+      if (this._isIntersecting && !document.hidden) this.start();
+      else this.stop();
     }
 
     _onPointerDown(e) {
@@ -160,7 +167,6 @@
     }
 
     start() {
-      this._visible = true;
       if (this.running) return;
       this.running = true;
       this._last = performance.now();
@@ -168,7 +174,6 @@
     }
 
     stop() {
-      this._visible = false;
       this.running = false;
       if (this._raf) cancelAnimationFrame(this._raf);
       this._raf = null;
@@ -179,6 +184,7 @@
       this._ro.disconnect();
       this._io.disconnect();
       clickTargets.delete(this);
+      document.removeEventListener('visibilitychange', this._updateRunState);
     }
 
     _drawArrow(a, alpha) {
